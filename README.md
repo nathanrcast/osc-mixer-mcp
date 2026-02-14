@@ -22,7 +22,7 @@ MCP Server for controlling a Behringer X-Air XR18 digital mixer via Open Sound C
 ## Installation
 
 ```bash
-git clone https://github.com/your-username/OSC_MCP.git
+git clone https://github.com/darkwings/OSC_MCP.git
 cd OSC_MCP
 uv sync
 ```
