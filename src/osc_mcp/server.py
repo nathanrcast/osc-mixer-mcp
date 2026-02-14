@@ -315,7 +315,10 @@ def send_raw_osc(address: str, args: list[Any] | None = None) -> str:
 
 def main() -> None:
     print("OSC MCP server started (stdio transport)", file=sys.stderr)
-    mcp.run(transport="stdio")
+    try:
+        mcp.run(transport="stdio")
+    except KeyboardInterrupt:
+        print("\nServer stopped.", file=sys.stderr)
 
 
 if __name__ == "__main__":
