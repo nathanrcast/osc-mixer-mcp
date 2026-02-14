@@ -41,10 +41,13 @@ uv run mcp dev src/osc_mcp/server.py
 
 ### Claude Desktop
 
-Add the following to your Claude Desktop config file:
+The easiest way is to use the built-in install command:
 
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+```bash
+uv run mcp install src/osc_mcp/server.py --name "OSC Mixer"
+```
+
+Alternatively, open Claude Desktop and go to **Settings > Developer > Edit Config**, then add:
 
 ```json
 {
@@ -57,9 +60,15 @@ Add the following to your Claude Desktop config file:
 }
 ```
 
+Restart Claude Desktop after saving.
+
 ### Claude Code
 
-Add to your project's `.mcp.json` or `~/.claude/mcp.json`:
+```bash
+claude mcp add osc-mcp -- uv run --directory /absolute/path/to/OSC_MCP osc-mcp
+```
+
+Or manually add to `.mcp.json` or `~/.claude/mcp.json`:
 
 ```json
 {
