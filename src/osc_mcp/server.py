@@ -17,6 +17,28 @@ _client: OscClient | None = None
 _registry = xair.NameRegistry()
 
 
+def _sync_names(client: OscClient) -> int:
+    """Query channel/bus names from the mixer and populate the registry."""
+    count = 0
+    for ch in range(1, xair.NUM_CHANNELS + 1):
+        result = client.query(xair.ch_config_name(ch))
+        if result and isinstance(result[0], str) and result[0].strip():
+            try:
+                _registry.assign_name("channel", ch, result[0].strip())
+                count += 1
+            except ValueError:
+                pass  # skip duplicate names
+    for bus in range(1, xair.NUM_BUSES + 1):
+        result = client.query(xair.bus_config_name(bus))
+        if result and isinstance(result[0], str) and result[0].strip():
+            try:
+                _registry.assign_name("bus", bus, result[0].strip())
+                count += 1
+            except ValueError:
+                pass  # skip duplicate names
+    return count
+
+
 def _get_client() -> OscClient:
     global _client
     if _client is None:
@@ -34,6 +56,7 @@ def _get_client() -> OscClient:
                 "on this network. Ask the user for the current mixer IP."
             )
         _client = client
+        _sync_names(_client)
     return _client
 
 
@@ -66,7 +89,11 @@ def connect_mixer(ip: str, port: int = 10024) -> str:
         )
     _client = client
     config.save_mixer_address(ip, port)
-    return f"Connected to mixer at {ip}:{port}. Address saved for future sessions."
+    synced = _sync_names(client)
+    msg = f"Connected to mixer at {ip}:{port}. Address saved for future sessions."
+    if synced:
+        msg += f" Synced {synced} name(s) from mixer."
+    return msg
 
 
 # ---------------------------------------------------------------------------

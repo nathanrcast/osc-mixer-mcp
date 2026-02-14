@@ -241,6 +241,80 @@ class TestRawOsc:
         mock.send.assert_called_once_with("/some/path")
 
 
+class TestSyncNames:
+    def test_sync_names_populates_registry(self):
+        mock = _mock_client()
+
+        def query_side_effect(addr):
+            mapping = {
+                "/ch/01/config/name": ["Kick"],
+                "/ch/02/config/name": ["Snare"],
+                "/bus/1/config/name": ["Drums"],
+            }
+            return mapping.get(addr, [""])
+
+        mock.query.side_effect = query_side_effect
+        count = server._sync_names(mock)
+        assert count == 3
+        assert server._registry.resolve("channel", "Kick") == 1
+        assert server._registry.resolve("channel", "Snare") == 2
+        assert server._registry.resolve("bus", "Drums") == 1
+
+    def test_sync_names_skips_empty(self):
+        mock = _mock_client()
+        mock.query.return_value = [""]
+        count = server._sync_names(mock)
+        assert count == 0
+        assert server._registry.list_names("channel") == {}
+        assert server._registry.list_names("bus") == {}
+
+    def test_sync_names_skips_none(self):
+        mock = _mock_client()
+        mock.query.return_value = None
+        count = server._sync_names(mock)
+        assert count == 0
+
+    def test_sync_names_skips_whitespace_only(self):
+        mock = _mock_client()
+        mock.query.return_value = ["   "]
+        count = server._sync_names(mock)
+        assert count == 0
+
+    @patch("osc_mcp.server.config")
+    @patch("osc_mcp.server.OscClient")
+    def test_connect_mixer_reports_synced_names(self, MockOscClient, mock_config):
+        instance = MockOscClient.return_value
+
+        def query_side_effect(addr):
+            if addr == "/xinfo":
+                return ["XR18"]
+            if addr == "/ch/01/config/name":
+                return ["Kick"]
+            if addr == "/bus/2/config/name":
+                return ["Monitor"]
+            return [""]
+
+        instance.query.side_effect = query_side_effect
+        result = server.connect_mixer("192.168.1.1")
+        assert "Connected" in result
+        assert "Synced 2 name(s)" in result
+
+    @patch("osc_mcp.server.config")
+    @patch("osc_mcp.server.OscClient")
+    def test_connect_mixer_no_names_no_sync_message(self, MockOscClient, mock_config):
+        instance = MockOscClient.return_value
+
+        def query_side_effect(addr):
+            if addr == "/xinfo":
+                return ["XR18"]
+            return [""]
+
+        instance.query.side_effect = query_side_effect
+        result = server.connect_mixer("192.168.1.1")
+        assert "Connected" in result
+        assert "Synced" not in result
+
+
 class TestNaming:
     def test_assign_channel_name(self):
         result = server.assign_channel_name(1, "Kick")

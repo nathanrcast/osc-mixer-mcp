@@ -138,6 +138,16 @@ def fx_send_mute(slot: int) -> str:
     return f"/fxsend/{slot}/mix/on"
 
 
+def ch_config_name(ch: int) -> str:
+    """Channel config name: /ch/01/config/name"""
+    return f"/ch/{_pad(ch)}/config/name"
+
+
+def bus_config_name(bus: int) -> str:
+    """Bus config name: /bus/1/config/name"""
+    return f"/bus/{bus}/config/name"
+
+
 # ---------------------------------------------------------------------------
 # Validation helpers
 # ---------------------------------------------------------------------------

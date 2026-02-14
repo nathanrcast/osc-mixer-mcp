@@ -9,8 +9,10 @@ from osc_mcp.xair import (
     ch_send_level,
     ch_eq_band,
     ch_eq_on,
+    ch_config_name,
     bus_fader,
     bus_mute,
+    bus_config_name,
     main_fader,
     main_mute,
     fx_send_fader,
@@ -129,6 +131,14 @@ class TestAddressBuilders:
 
     def test_fx_send_mute(self):
         assert fx_send_mute(2) == "/fxsend/2/mix/on"
+
+    def test_ch_config_name(self):
+        assert ch_config_name(1) == "/ch/01/config/name"
+        assert ch_config_name(18) == "/ch/18/config/name"
+
+    def test_bus_config_name(self):
+        assert bus_config_name(1) == "/bus/1/config/name"
+        assert bus_config_name(6) == "/bus/6/config/name"
 
 
 # ---------------------------------------------------------------------------
