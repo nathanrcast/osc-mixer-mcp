@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Any
 
 from mcp.server.fastmcp import FastMCP
@@ -313,6 +314,7 @@ def send_raw_osc(address: str, args: list[Any] | None = None) -> str:
 
 
 def main() -> None:
+    print("OSC MCP server started (stdio transport)", file=sys.stderr)
     mcp.run(transport="stdio")
 
 
