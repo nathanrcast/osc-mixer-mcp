@@ -1,17 +1,17 @@
 [project]
-name = "osc-mcp"
-version = "0.1.0"
-description = "MCP Server for controlling audio equipment via OSC protocol"
+name = "osc-xr18-mcp"
+version = "0.2.0"
+description = "Hardened MCP server for controlling a Behringer XR18 via OSC"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [
-    "mcp[cli]",
-    "python-osc",
+    "mcp[cli]>=1.0,<2.0",
+    "python-osc>=1.9,<2.0",
 ]
 
 [project.scripts]
-osc-mcp = "osc_mcp.server:main"
+osc-xr18-mcp = "osc_mcp.server:main"
 
 [build-system]
 requires = ["hatchling"]

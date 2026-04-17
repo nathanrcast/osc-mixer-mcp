@@ -1,6 +1,16 @@
-# OSC MCP Server
+# OSC XR18 MCP Server
 
-MCP Server for controlling a Behringer X-Air XR18 digital mixer via Open Sound Control (OSC) protocol.
+Hardened MCP server for controlling a Behringer X-Air XR18 digital mixer via Open Sound Control (OSC).
+
+Forked from [darkwings/OSC_MCP](https://github.com/darkwings/OSC_MCP) with added security controls for use in an LLM tool-use environment.
+
+## Hardening (vs. upstream)
+
+- **Network allowlist** — `connect_mixer` and the auto-reconnect path reject any IP outside `ALLOWED_NETWORKS` (see `src/osc_mcp/config.py`). Prevents the server from being aimed at arbitrary LAN hosts by a compromised or prompt-injected client.
+- **OSC prefix allowlist** — `send_raw_osc` only permits addresses under safe prefixes (`/ch/`, `/bus/`, `/lr/`, `/fxsend/`, `/fx/`, `/headamp/`, `/xinfo`, `/status`). Scene save/load, show recall, and prefs paths are blocked.
+- **Source-IP check on query replies** — UDP responses from anyone other than the configured mixer IP are dropped, defeating trivial LAN spoofing.
+- **Resilient OSC parser** — malformed packets return `None` instead of surfacing parser exceptions to the tool caller.
+- **Pinned dependencies** + committed `uv.lock`.
 
 ## Features
 
@@ -11,108 +21,72 @@ MCP Server for controlling a Behringer X-Air XR18 digital mixer via Open Sound C
 - **Symbolic naming** — refer to channels and buses by name (e.g. "Kick", "Drummer") instead of numbers
 - **dB-to-float conversion** — work in dB, the server handles the XR18's non-linear fader scale
 - **Persistent connection** — the server remembers the last mixer IP across sessions
-- **Raw OSC escape hatch** for any unsupported command
+- **Raw OSC escape hatch** (prefix-restricted, see above)
 
 ## Prerequisites
 
 - Python >= 3.11
 - [uv](https://docs.astral.sh/uv/) package manager
-- A Behringer XR18 (or other X-Air mixer) on your local network
+- A Behringer XR18 (or other X-Air mixer) on an allowed network
 
 ## Installation
 
 ```bash
-git clone https://github.com/darkwings/OSC_MCP.git
-cd OSC_MCP
+git clone https://github.com/nathanrcast/osc-xr18-mcp.git
+cd osc-xr18-mcp
 uv sync
 ```
+
+If the mixer lives on a subnet other than `192.168.1.0/24`, edit `ALLOWED_NETWORKS` in `src/osc_mcp/config.py` before first connect.
 
 ## Running the Server
 
 ```bash
-# Run via stdio (used by MCP clients)
-uv run osc-mcp
+# stdio (used by MCP clients)
+uv run osc-xr18-mcp
 
-# Or use the MCP inspector for interactive testing
+# MCP inspector for interactive testing
 uv run mcp dev src/osc_mcp/server.py
 ```
 
 ## Adding to an MCP Client
 
-### Claude Desktop
-
-The easiest way is to use the built-in install command:
-
-```bash
-uv run mcp install src/osc_mcp/server.py --name "OSC Mixer"
-```
-
-Alternatively, open Claude Desktop and go to **Settings > Developer > Edit Config**, then add:
-
-```json
-{
-  "mcpServers": {
-    "osc-mcp": {
-      "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/OSC_MCP", "osc-mcp"]
-    }
-  }
-}
-```
-
-Restart Claude Desktop after saving.
-
 ### Claude Code
 
 ```bash
-claude mcp add osc-mcp -- uv run --directory /absolute/path/to/OSC_MCP osc-mcp
+claude mcp add osc-xr18 -- uv run --directory /absolute/path/to/osc-xr18-mcp osc-xr18-mcp
 ```
 
-Or manually add to `.mcp.json` or `~/.claude/mcp.json`:
+Or manually:
 
 ```json
 {
   "mcpServers": {
-    "osc-mcp": {
+    "osc-xr18": {
       "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/OSC_MCP", "osc-mcp"]
+      "args": ["run", "--directory", "/absolute/path/to/osc-xr18-mcp", "osc-xr18-mcp"]
     }
   }
 }
 ```
 
-### Cursor
-
-Go to **Settings > MCP Servers > Add Server** and use:
-
-- **Type**: stdio
-- **Command**: `uv run --directory /absolute/path/to/OSC_MCP osc-mcp`
-
-### Generic MCP Client
-
-Any MCP-compatible client can connect using the stdio transport:
+### Claude Desktop
 
 ```bash
-uv run --directory /absolute/path/to/OSC_MCP osc-mcp
+uv run mcp install src/osc_mcp/server.py --name "OSC XR18"
 ```
-
-Replace `/absolute/path/to/OSC_MCP` with the actual path where you cloned the repository.
 
 ## Usage
 
-Once the server is running in your MCP client:
-
-1. **Connect**: `connect_mixer("192.168.1.1")` — the IP is saved for future sessions
-2. **Name your channels**: `assign_channel_name(1, "Kick")`, `assign_bus_name(2, "Drummer")`
+1. **Connect**: `connect_mixer("192.168.1.50")` — IP is checked against `ALLOWED_NETWORKS`, then saved
+2. **Name channels**: `assign_channel_name(1, "Kick")`, `assign_bus_name(2, "Drummer")`
 3. **Control**: `set_channel_fader("Kick", -5)`, `set_channel_send_to_bus("Kick", "Drummer", -10)`
-
-On subsequent sessions, the server automatically reconnects to the last known mixer IP. If the mixer is unreachable (e.g. different network), the agent is prompted to ask for the new IP.
 
 ## Available Tools
 
 | Tool | Description |
 |---|---|
-| `connect_mixer` | Connect to mixer at IP:port |
+| `connect_mixer` | Connect to mixer at IP:port (allowlist enforced) |
 | `assign_channel_name` | Name a channel (1-18) |
 | `assign_bus_name` | Name a bus (1-6) |
 | `list_names` | Show all name assignments |
@@ -130,7 +104,7 @@ On subsequent sessions, the server automatically reconnects to the last known mi
 | `set_fx_send_fader` | Set FX send level |
 | `set_fx_send_mute` | Mute/unmute FX send |
 | `get_mixer_info` | Query mixer info |
-| `send_raw_osc` | Send any raw OSC message |
+| `send_raw_osc` | Send raw OSC (prefix-allowlisted) |
 
 ## Running Tests
 
@@ -140,4 +114,4 @@ uv run pytest
 
 ## License
 
-Apache License 2.0
+Apache License 2.0 (inherited from upstream)

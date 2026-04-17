@@ -34,34 +34,40 @@ class OscClient:
 
         The XR18 replies with the current value when you send a parameter path
         with no arguments. Returns the response args list, or None on timeout.
+
+        Drops packets from sources other than self.ip (spoofing defense) and
+        returns None if the response fails to parse (malformed packet).
         """
         if not self._connected:
             raise ConnectionError("Not connected to mixer")
 
-        # Create a UDP socket to receive the response
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(timeout)
-        sock.bind(("", 0))  # Bind to any available port
-        local_port = sock.getsockname()[1]
+        sock.bind(("", 0))
 
         try:
-            # Send the query — XR18 replies to the sender's port
-            # We need to send from our listening socket
             self._send_raw(sock, address)
-
-            # Wait for response
-            data, _ = sock.recvfrom(4096)
-            return self._parse_osc_response(data)
-        except socket.timeout:
-            return None
+            deadline = time.monotonic() + timeout
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return None
+                sock.settimeout(remaining)
+                try:
+                    data, (src_ip, _) = sock.recvfrom(4096)
+                except socket.timeout:
+                    return None
+                if src_ip != self.ip:
+                    continue  # drop spoofed/unrelated packets
+                try:
+                    return self._parse_osc_response(data)
+                except (ValueError, IndexError, UnicodeDecodeError, struct.error):
+                    return None
         finally:
             sock.close()
 
     def _send_raw(self, sock: socket.socket, address: str) -> None:
         """Send a raw OSC message with no arguments through the given socket."""
-        # Build minimal OSC message: address string + ,\0\0\0 (empty type tag)
         addr_bytes = address.encode("ascii")
-        # Pad to 4-byte boundary
         addr_padded = addr_bytes + b"\x00" * (4 - len(addr_bytes) % 4)
         type_tag = b",\x00\x00\x00"
         message = addr_padded + type_tag
@@ -70,12 +76,9 @@ class OscClient:
     @staticmethod
     def _parse_osc_response(data: bytes) -> list[Any]:
         """Parse a simple OSC response message, returning the argument list."""
-        # Find end of address string
         addr_end = data.index(b"\x00")
-        # Skip to next 4-byte boundary
         offset = addr_end + (4 - addr_end % 4)
 
-        # Parse type tag string
         if offset >= len(data) or data[offset : offset + 1] != b",":
             return []
 

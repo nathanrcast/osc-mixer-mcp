@@ -12,6 +12,20 @@ from osc_mcp import config, xair
 
 mcp = FastMCP("osc-mcp")
 
+# Prefixes allowed through send_raw_osc. Keeps the raw escape hatch useful
+# for mixing/routing/EQ while blocking snapshot, show, and prefs addresses
+# that can destroy saved scenes or reconfigure the mixer.
+ALLOWED_OSC_PREFIXES: tuple[str, ...] = (
+    "/ch/",
+    "/bus/",
+    "/lr/",
+    "/fxsend/",
+    "/fx/",
+    "/headamp/",
+    "/xinfo",
+    "/status",
+)
+
 # Global state
 _client: OscClient | None = None
 _registry = xair.NameRegistry()
@@ -48,6 +62,11 @@ def _get_client() -> OscClient:
                 "Not connected. Use connect_mixer(ip) to connect."
             )
         ip, port = stored
+        if not config.is_allowed_ip(ip):
+            raise ConnectionError(
+                f"Stored mixer IP {ip} is not in ALLOWED_NETWORKS. "
+                "Refusing auto-connect. Reconnect with connect_mixer(ip)."
+            )
         client = OscClient(ip, port)
         if client.query("/xinfo") is None:
             raise ConnectionError(
@@ -81,6 +100,12 @@ def _resolve_bus(bus: str | int) -> int:
 def connect_mixer(ip: str, port: int = 10024) -> str:
     """Connect to the XR18 mixer at the given IP and port (default 10024)."""
     global _client
+    if not config.is_allowed_ip(ip):
+        allowed = ", ".join(str(n) for n in config.ALLOWED_NETWORKS)
+        return (
+            f"Refused: {ip} is not in ALLOWED_NETWORKS ({allowed}). "
+            "Edit src/osc_mcp/config.py to broaden the allowlist."
+        )
     client = OscClient(ip, port)
     if client.query("/xinfo") is None:
         return (
@@ -326,7 +351,17 @@ def get_mixer_info() -> str:
 
 @mcp.tool()
 def send_raw_osc(address: str, args: list[Any] | None = None) -> str:
-    """Send a raw OSC message. Escape hatch for any OSC command."""
+    """Send a raw OSC message. Escape hatch for any OSC command.
+
+    Address must start with one of ALLOWED_OSC_PREFIXES. This blocks
+    snapshot/show/prefs paths that can destroy scenes or reconfigure the
+    mixer from a prompt-injected tool call.
+    """
+    if not address.startswith(ALLOWED_OSC_PREFIXES):
+        return (
+            f"Refused: {address!r} is not under an allowed prefix. "
+            f"Allowed: {ALLOWED_OSC_PREFIXES}"
+        )
     client = _get_client()
     if args:
         client.send(address, *args)

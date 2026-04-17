@@ -40,8 +40,8 @@ class TestConnectMixer:
     @patch("osc_mcp.server.OscClient")
     def test_connect_default_port(self, MockOscClient, mock_config):
         MockOscClient.return_value.query.return_value = ["XR18"]
-        server.connect_mixer("10.0.0.1")
-        MockOscClient.assert_called_once_with("10.0.0.1", 10024)
+        server.connect_mixer("192.168.1.200")
+        MockOscClient.assert_called_once_with("192.168.1.200", 10024)
 
     @patch("osc_mcp.server.config")
     @patch("osc_mcp.server.OscClient")
@@ -232,13 +232,58 @@ class TestInfoTools:
 class TestRawOsc:
     def test_send_raw_with_args(self):
         mock = _mock_client()
-        server.send_raw_osc("/some/path", [1.0, 2.0])
-        mock.send.assert_called_once_with("/some/path", 1.0, 2.0)
+        server.send_raw_osc("/ch/01/mix/fader", [0.5])
+        mock.send.assert_called_once_with("/ch/01/mix/fader", 0.5)
 
     def test_send_raw_no_args(self):
         mock = _mock_client()
-        server.send_raw_osc("/some/path")
-        mock.send.assert_called_once_with("/some/path")
+        server.send_raw_osc("/xinfo")
+        mock.send.assert_called_once_with("/xinfo")
+
+    def test_send_raw_refuses_disallowed_prefix(self):
+        mock = _mock_client()
+        result = server.send_raw_osc("/-snap/01/load", [1])
+        assert "Refused" in result
+        mock.send.assert_not_called()
+
+    def test_send_raw_refuses_show_prefix(self):
+        mock = _mock_client()
+        result = server.send_raw_osc("/-show/current/load")
+        assert "Refused" in result
+        mock.send.assert_not_called()
+
+    def test_send_raw_refuses_prefs_prefix(self):
+        mock = _mock_client()
+        result = server.send_raw_osc("/-prefs/ip/addr", ["10.0.0.1"])
+        assert "Refused" in result
+        mock.send.assert_not_called()
+
+
+class TestConnectAllowlist:
+    @patch("osc_mcp.server.OscClient")
+    def test_connect_refuses_out_of_range_ip(self, MockOscClient):
+        result = server.connect_mixer("8.8.8.8")
+        assert "Refused" in result
+        MockOscClient.assert_not_called()
+
+    @patch("osc_mcp.server.OscClient")
+    def test_connect_refuses_malformed_ip(self, MockOscClient):
+        result = server.connect_mixer("not-an-ip")
+        assert "Refused" in result
+        MockOscClient.assert_not_called()
+
+    @patch("osc_mcp.server.OscClient")
+    def test_auto_connect_refuses_out_of_range_stored_ip(
+        self, MockOscClient, tmp_path, monkeypatch
+    ):
+        from osc_mcp import config as real_config
+
+        monkeypatch.setattr(real_config, "CONFIG_DIR", tmp_path)
+        monkeypatch.setattr(real_config, "CONFIG_FILE", tmp_path / "config.json")
+        real_config.save_mixer_address("8.8.8.8", 10024)
+        with pytest.raises(ConnectionError, match="ALLOWED_NETWORKS"):
+            server.set_channel_fader(1, 0.0)
+        MockOscClient.assert_not_called()
 
 
 class TestSyncNames:
