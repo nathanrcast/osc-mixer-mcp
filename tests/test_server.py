@@ -240,21 +240,59 @@ class TestRawOsc:
         server.send_raw_osc("/xinfo")
         mock.send.assert_called_once_with("/xinfo")
 
-    def test_send_raw_refuses_disallowed_prefix(self):
+    def test_send_raw_allows_config_chlink(self):
         mock = _mock_client()
-        result = server.send_raw_osc("/-snap/01/load", [1])
-        assert "Refused" in result
-        mock.send.assert_not_called()
+        server.send_raw_osc("/config/chlink/15-16", [1])
+        mock.send.assert_called_once_with("/config/chlink/15-16", 1)
 
-    def test_send_raw_refuses_show_prefix(self):
+    def test_send_raw_allows_snapshot_save(self):
         mock = _mock_client()
-        result = server.send_raw_osc("/-show/current/load")
-        assert "Refused" in result
-        mock.send.assert_not_called()
+        server.send_raw_osc("/-snap/01/save")
+        mock.send.assert_called_once_with("/-snap/01/save")
 
-    def test_send_raw_refuses_prefs_prefix(self):
+    def test_send_raw_allows_stat(self):
+        mock = _mock_client()
+        server.send_raw_osc("/-stat/solosw/01")
+        mock.send.assert_called_once_with("/-stat/solosw/01")
+
+    def test_send_raw_allows_nonnetwork_prefs(self):
+        mock = _mock_client()
+        server.send_raw_osc("/-prefs/lcdcontrast", [0.5])
+        mock.send.assert_called_once_with("/-prefs/lcdcontrast", 0.5)
+
+    def test_send_raw_denies_ip_change(self):
         mock = _mock_client()
         result = server.send_raw_osc("/-prefs/ip/addr", ["10.0.0.1"])
+        assert "Refused" in result and "denylist" in result
+        mock.send.assert_not_called()
+
+    def test_send_raw_denies_net_change(self):
+        mock = _mock_client()
+        result = server.send_raw_osc("/-prefs/net/gateway", ["10.0.0.1"])
+        assert "Refused" in result and "denylist" in result
+        mock.send.assert_not_called()
+
+    def test_send_raw_denies_newshow(self):
+        mock = _mock_client()
+        result = server.send_raw_osc("/-action/newshow")
+        assert "Refused" in result and "denylist" in result
+        mock.send.assert_not_called()
+
+    def test_send_raw_denies_clearshow(self):
+        mock = _mock_client()
+        result = server.send_raw_osc("/-action/clearshow")
+        assert "Refused" in result and "denylist" in result
+        mock.send.assert_not_called()
+
+    def test_send_raw_denies_node_passthrough(self):
+        mock = _mock_client()
+        result = server.send_raw_osc("/node", ["/ch/01/mix/fader 0.5"])
+        assert "Refused" in result and "denylist" in result
+        mock.send.assert_not_called()
+
+    def test_send_raw_refuses_unknown_prefix(self):
+        mock = _mock_client()
+        result = server.send_raw_osc("/bogus/path", [1])
         assert "Refused" in result
         mock.send.assert_not_called()
 

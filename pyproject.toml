@@ -1,6 +1,6 @@
 [project]
 name = "osc-xr18-mcp"
-version = "0.2.0"
+version = "0.3.0"
 description = "Hardened MCP server for controlling a Behringer XR18 via OSC"
 readme = "README.md"
 license = "Apache-2.0"

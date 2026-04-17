@@ -12,18 +12,56 @@ from osc_mcp import config, xair
 
 mcp = FastMCP("osc-mcp")
 
-# Prefixes allowed through send_raw_osc. Keeps the raw escape hatch useful
-# for mixing/routing/EQ while blocking snapshot, show, and prefs addresses
-# that can destroy saved scenes or reconfigure the mixer.
+# Prefixes allowed through send_raw_osc. Broad coverage of normal mix,
+# routing, config, and show operations. Destructive paths that fall inside
+# these prefixes are blocked below via DENIED_OSC_PATHS.
 ALLOWED_OSC_PREFIXES: tuple[str, ...] = (
+    # Input strips
     "/ch/",
+    "/auxin/",
+    "/rtn/",
+    # Output strips
     "/bus/",
     "/lr/",
-    "/fxsend/",
+    "/main/",
+    "/dca/",
+    # FX
     "/fx/",
+    "/fxsend/",
+    # I/O and global config
     "/headamp/",
+    "/config/",
+    "/outputs/",
+    # Show / scene / library (destructive subset denied below)
+    "/-action/",
+    "/-prefs/",
+    "/-libs/",
+    "/-snap/",
+    "/-show/",
+    # Status / info / metering
+    "/-stat/",
+    "/-usb/",
     "/xinfo",
+    "/info",
     "/status",
+    "/meters",
+    "/batchsubscribe",
+    "/subscribe",
+    "/unsubscribe",
+)
+
+# Specific paths denied even though they fall under an allowed prefix.
+# Checked before the allowlist.
+DENIED_OSC_PATHS: tuple[str, ...] = (
+    # Network/IP changes would disconnect the mixer until X AIR rediscovers it
+    "/-prefs/ip/",
+    "/-prefs/net/",
+    # Show-wipe clears saved scene/cue library in one call
+    "/-action/newshow",
+    "/-action/clearshow",
+    # /node takes an arbitrary OSC address as a string argument, which would
+    # bypass the prefix allowlist entirely
+    "/node",
 )
 
 # Global state
@@ -353,10 +391,16 @@ def get_mixer_info() -> str:
 def send_raw_osc(address: str, args: list[Any] | None = None) -> str:
     """Send a raw OSC message. Escape hatch for any OSC command.
 
-    Address must start with one of ALLOWED_OSC_PREFIXES. This blocks
-    snapshot/show/prefs paths that can destroy scenes or reconfigure the
-    mixer from a prompt-injected tool call.
+    Two layers of safety: DENIED_OSC_PATHS blocks specific destructive
+    operations (IP/network reconfig, show-wipe, /node pass-through).
+    ALLOWED_OSC_PREFIXES then gates the overall surface to normal
+    mix/routing/config/show addresses.
     """
+    if address.startswith(DENIED_OSC_PATHS):
+        return (
+            f"Refused (denylist): {address!r}. "
+            f"Denied paths: {DENIED_OSC_PATHS}"
+        )
     if not address.startswith(ALLOWED_OSC_PREFIXES):
         return (
             f"Refused: {address!r} is not under an allowed prefix. "
