@@ -1,8 +1,4 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Project Overview
+# OSC XR18 MCP — repo facts
 
 OSC_MCP is an MCP (Model Context Protocol) Server that implements the Open Sound Control (OSC) protocol. It allows AI assistants to send and receive OSC messages to control a Behringer X-Air XR18 digital mixer and other OSC-compatible applications.
 
