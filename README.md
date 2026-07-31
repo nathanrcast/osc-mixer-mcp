@@ -59,8 +59,8 @@ Everything above lives in `src/osc_mcp/profiles/` and is pinned by an executable
 ## Installation
 
 ```bash
-git clone https://github.com/nathanrcast/osc-xr18-mcp.git
-cd osc-xr18-mcp
+git clone https://github.com/nathanrcast/osc-mixer-mcp.git
+cd osc-mixer-mcp
 uv sync
 ```
 
@@ -90,7 +90,7 @@ uv run mcp dev src/osc_mcp/server.py
 ### Claude Code
 
 ```bash
-claude mcp add osc-mixer -- uv run --directory /absolute/path/to/osc-xr18-mcp osc-mixer-mcp
+claude mcp add osc-mixer -- uv run --directory /absolute/path/to/osc-mixer-mcp osc-mixer-mcp
 ```
 
 Or manually:
@@ -100,7 +100,7 @@ Or manually:
   "mcpServers": {
     "osc-mixer": {
       "command": "uv",
-      "args": ["run", "--directory", "/absolute/path/to/osc-xr18-mcp", "osc-mixer-mcp"]
+      "args": ["run", "--directory", "/absolute/path/to/osc-mixer-mcp", "osc-mixer-mcp"]
     }
   }
 }

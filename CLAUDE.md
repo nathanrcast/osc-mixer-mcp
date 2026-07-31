@@ -2,7 +2,7 @@
 
 MCP server that controls Behringer digital mixers over OSC/UDP. The console family is detected at connect time; a `MixerProfile` then supplies every OSC address, value encoding and capability count. Supports X-Air (XR12/16/18, X18, MR18), X32/M32 and WING.
 
-Repo is still named `osc-xr18-mcp` for history; the server and console script are `osc-mixer-mcp`.
+Renamed from `osc-xr18-mcp` at v0.4.0 when it stopped being XR18-only. `osc-xr18-mcp` survives as a console-script alias so older MCP client registrations keep launching.
 
 ## Tech Stack
 

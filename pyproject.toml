@@ -1,5 +1,5 @@
 [project]
-name = "osc-xr18-mcp"
+name = "osc-mixer-mcp"
 version = "0.4.0"
 description = "Hardened MCP server for controlling Behringer X-Air, X32/M32 and WING mixers via OSC"
 readme = "README.md"
