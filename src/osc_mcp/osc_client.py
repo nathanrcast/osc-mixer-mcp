@@ -1,108 +1,217 @@
-"""OSC UDP client wrapper for send and query operations."""
+"""OSC UDP client: one persistent socket, correlated queries, subscriptions.
+
+All three console families reply to the *source port* of the sender, so a
+single bound socket serves sends, queries and subscription streams. A daemon
+receiver thread demultiplexes replies by OSC address, which is what makes
+`query_many` (and any state push) possible.
+"""
 
 from __future__ import annotations
 
+import queue
 import socket
-import struct
+import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
-from pythonosc.udp_client import SimpleUDPClient
+from pythonosc.osc_message import OscMessage, ParseError
+from pythonosc.osc_message_builder import OscMessageBuilder
+
+DEFAULT_TIMEOUT = 0.5
+_RECV_BUFSIZE = 65535
+# Cadence of the receive loop's wakeups, so stop() is responsive.
+_POLL_INTERVAL = 0.2
+
+
+def build_message(address: str, args: list[Any]) -> bytes:
+    """Encode an OSC message. Values keep their Python types."""
+    builder = OscMessageBuilder(address=address)
+    for arg in args:
+        builder.add_arg(arg)
+    return builder.build().dgram
 
 
 class OscClient:
-    """Wraps python-osc SimpleUDPClient with connection state and query support."""
+    """Persistent OSC/UDP client with address-correlated request/response."""
 
-    def __init__(self, ip: str, port: int = 10024) -> None:
+    def __init__(self, ip: str, port: int) -> None:
         self.ip = ip
         self.port = port
-        self._client = SimpleUDPClient(ip, port)
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock.bind(("", 0))
+        self._sock.settimeout(_POLL_INTERVAL)
+
+        self._lock = threading.Lock()
+        self._pending: dict[str, list[queue.Queue]] = {}
+        self._meter_handlers: dict[str, Callable[[list[Any]], None]] = {}
+        self._stop = threading.Event()
+
+        self._receiver = threading.Thread(
+            target=self._receive_loop, name="osc-receiver", daemon=True
+        )
+        self._receiver.start()
+
+        self._keepalive: threading.Thread | None = None
         self._connected = True
 
     @property
     def connected(self) -> bool:
         return self._connected
 
+    # ------------------------------------------------------------------
+    # Receive path
+    # ------------------------------------------------------------------
+
+    def _receive_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                data, (src_ip, _) = self._sock.recvfrom(_RECV_BUFSIZE)
+            except socket.timeout:
+                continue
+            except OSError:
+                break  # socket closed under us
+            if src_ip != self.ip:
+                continue  # drop spoofed/unrelated packets
+            try:
+                message = OscMessage(data)
+            except (ParseError, ValueError, IndexError, UnicodeDecodeError):
+                continue  # malformed packet, ignore rather than crash
+            self._dispatch(message.address, list(message.params))
+
+    def _dispatch(self, address: str, args: list[Any]) -> None:
+        with self._lock:
+            waiters = self._pending.get(address)
+            waiter = waiters.pop(0) if waiters else None
+            if waiters is not None and not waiters:
+                del self._pending[address]
+            handler = self._meter_handlers.get(address)
+        if waiter is not None:
+            waiter.put(args)
+        if handler is not None:
+            handler(args)
+
+    def _register(self, address: str) -> queue.Queue:
+        pipe: queue.Queue = queue.Queue(maxsize=1)
+        with self._lock:
+            self._pending.setdefault(address, []).append(pipe)
+        return pipe
+
+    def _unregister(self, address: str, pipe: queue.Queue) -> None:
+        with self._lock:
+            waiters = self._pending.get(address)
+            if not waiters:
+                return
+            if pipe in waiters:
+                waiters.remove(pipe)
+            if not waiters:
+                del self._pending[address]
+
+    # ------------------------------------------------------------------
+    # Send path
+    # ------------------------------------------------------------------
+
     def send(self, address: str, *args: Any) -> None:
-        """Send an OSC message."""
+        """Send an OSC message. Fire and forget."""
         if not self._connected:
             raise ConnectionError("Not connected to mixer")
-        self._client.send_message(address, list(args) if args else [])
+        self._sock.sendto(build_message(address, list(args)), (self.ip, self.port))
 
-    def query(self, address: str, timeout: float = 0.5) -> list[Any] | None:
-        """Query a parameter by sending an empty OSC message and listening for the response.
+    def query(
+        self, address: str, timeout: float = DEFAULT_TIMEOUT
+    ) -> list[Any] | None:
+        """Ask for a parameter's current value.
 
-        The XR18 replies with the current value when you send a parameter path
-        with no arguments. Returns the response args list, or None on timeout.
+        All three families reply to a no-argument message with the current
+        value. Returns the reply args, or None on timeout. The reply is matched
+        by address, so a stray push for a different parameter cannot satisfy it.
+        """
+        results = self.query_many([address], timeout=timeout)
+        return results.get(address)
 
-        Drops packets from sources other than self.ip (spoofing defense) and
-        returns None if the response fails to parse (malformed packet).
+    def query_many(
+        self, addresses: list[str], timeout: float = DEFAULT_TIMEOUT
+    ) -> dict[str, list[Any] | None]:
+        """Query many parameters in one round-trip window.
+
+        Every request goes out first, then replies are collected until the
+        deadline. Turns an O(n) stall into roughly one timeout -- the
+        difference between ~30 s and ~1 s when syncing an X32's strip names.
         """
         if not self._connected:
             raise ConnectionError("Not connected to mixer")
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.bind(("", 0))
-
+        unique = list(dict.fromkeys(addresses))
+        pipes = {address: self._register(address) for address in unique}
         try:
-            self._send_raw(sock, address)
+            for address in unique:
+                self.send(address)
+
+            results: dict[str, list[Any] | None] = {}
             deadline = time.monotonic() + timeout
-            while True:
+            for address in unique:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    return None
-                sock.settimeout(remaining)
+                    results[address] = None
+                    continue
                 try:
-                    data, (src_ip, _) = sock.recvfrom(4096)
-                except socket.timeout:
-                    return None
-                if src_ip != self.ip:
-                    continue  # drop spoofed/unrelated packets
-                try:
-                    return self._parse_osc_response(data)
-                except (ValueError, IndexError, UnicodeDecodeError, struct.error):
-                    return None
+                    results[address] = pipes[address].get(timeout=remaining)
+                except queue.Empty:
+                    results[address] = None
+            return results
         finally:
-            sock.close()
+            for address, pipe in pipes.items():
+                self._unregister(address, pipe)
 
-    def _send_raw(self, sock: socket.socket, address: str) -> None:
-        """Send a raw OSC message with no arguments through the given socket."""
-        addr_bytes = address.encode("ascii")
-        addr_padded = addr_bytes + b"\x00" * (4 - len(addr_bytes) % 4)
-        type_tag = b",\x00\x00\x00"
-        message = addr_padded + type_tag
-        sock.sendto(message, (self.ip, self.port))
+    # ------------------------------------------------------------------
+    # Subscriptions
+    # ------------------------------------------------------------------
 
-    @staticmethod
-    def _parse_osc_response(data: bytes) -> list[Any]:
-        """Parse a simple OSC response message, returning the argument list."""
-        addr_end = data.index(b"\x00")
-        offset = addr_end + (4 - addr_end % 4)
+    def start_keepalive(self, address: str, args: list[Any], interval: float) -> None:
+        """Renew a subscription on a timer until disconnect.
 
-        if offset >= len(data) or data[offset : offset + 1] != b",":
-            return []
+        On WING only one client may hold the subscription, so this can displace
+        another controller -- callers gate it behind read-only mode.
+        """
+        if self._keepalive is not None:
+            return
 
-        type_tag_end = data.index(b"\x00", offset)
-        type_tags = data[offset + 1 : type_tag_end].decode("ascii")
-        offset = type_tag_end + (4 - type_tag_end % 4)
+        def loop() -> None:
+            while not self._stop.is_set():
+                try:
+                    self.send(address, *args)
+                except (OSError, ConnectionError):
+                    return
+                if self._stop.wait(interval):
+                    return
 
-        args: list[Any] = []
-        for tag in type_tags:
-            if tag == "f":
-                (val,) = struct.unpack(">f", data[offset : offset + 4])
-                args.append(val)
-                offset += 4
-            elif tag == "i":
-                (val,) = struct.unpack(">i", data[offset : offset + 4])
-                args.append(val)
-                offset += 4
-            elif tag == "s":
-                str_end = data.index(b"\x00", offset)
-                args.append(data[offset:str_end].decode("ascii"))
-                offset = str_end + (4 - str_end % 4)
+        self._keepalive = threading.Thread(
+            target=loop, name="osc-keepalive", daemon=True
+        )
+        self._keepalive.start()
 
-        return args
+    def add_meter_handler(
+        self, address: str, handler: Callable[[list[Any]], None]
+    ) -> None:
+        with self._lock:
+            self._meter_handlers[address] = handler
+
+    def remove_meter_handler(self, address: str) -> None:
+        with self._lock:
+            self._meter_handlers.pop(address, None)
+
+    # ------------------------------------------------------------------
 
     def disconnect(self) -> None:
-        """Mark client as disconnected."""
+        """Tear down the socket and both threads."""
+        if not self._connected:
+            return
         self._connected = False
+        self._stop.set()
+        try:
+            self._sock.close()
+        except OSError:
+            pass
+        for thread in (self._receiver, self._keepalive):
+            if thread is not None and thread.is_alive():
+                thread.join(timeout=1.0)
+        self._keepalive = None

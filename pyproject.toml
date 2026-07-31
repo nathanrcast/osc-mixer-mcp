@@ -1,7 +1,7 @@
 [project]
 name = "osc-xr18-mcp"
-version = "0.3.0"
-description = "Hardened MCP server for controlling a Behringer XR18 via OSC"
+version = "0.4.0"
+description = "Hardened MCP server for controlling Behringer X-Air, X32/M32 and WING mixers via OSC"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -11,6 +11,8 @@ dependencies = [
 ]
 
 [project.scripts]
+osc-mixer-mcp = "osc_mcp.server:main"
+# Kept so existing MCP client registrations keep working.
 osc-xr18-mcp = "osc_mcp.server:main"
 
 [build-system]
