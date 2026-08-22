@@ -21,7 +21,7 @@ The families are not interchangeable, and the differences are the kind that fail
 | Channel name | `/ch/01/config/name` | `/ch/01/config/name` | `/ch/1/$name` |
 | Bus fader | `/bus/1/…` (1-digit) | `/bus/01/…` (**2-digit**) | `/bus/1/fdr` |
 | Main | `/lr/mix/fader` | `/main/st/mix/fader` | `/main/1/fdr` |
-| Head amp | `/headamp/00/gain` | `/headamp/000/gain` | `/ch/1/in/set/g` |
+| Head amp | `/headamp/01/gain` (**1-indexed**) | `/headamp/000/gain` (0-indexed) | `/ch/1/in/set/g` |
 | Identify | `/xinfo` | `/info` | `/?` |
 | Raw namespaces | `/-stat/ /-snap/ /-show/` | same + show paths | `/$stat/ /$ctl/ /cfg/` |
 | Counts | 16 ch, 6 bus, 4 fx, 4 dca | 32 ch, 16 bus, 8 fx, 8 dca | 40 ch, 16 bus, 16 dca |

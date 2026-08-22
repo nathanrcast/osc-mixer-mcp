@@ -71,7 +71,10 @@ class MixerProfile:
         return f"/ch/{self._ch_idx(ch)}/eq/on"
 
     def ch_gain(self, ch: int) -> str:
-        """Preamp gain. X-Air/X32 head amps are 0-indexed, one below the channel."""
+        """Preamp gain. X32/M32 head amps are 0-indexed, one below the channel.
+
+        X-Air is the exception and overrides this — see XAirProfile.
+        """
         return f"/headamp/{self._pad(ch - 1)}/gain"
 
     def ch_phantom(self, ch: int) -> str:

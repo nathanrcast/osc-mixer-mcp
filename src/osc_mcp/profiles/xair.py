@@ -82,6 +82,19 @@ class XAirProfile(MixerProfile):
     def main_name(self) -> str:
         return "/lr/config/name"
 
+    def ch_gain(self, ch: int) -> str:
+        """X-Air head amps are 1-indexed: /headamp/01 is channel 1.
+
+        Verified on an XR18 (fw 1.16): /headamp/00 never answers, while
+        /headamp/01../headamp/16 map 1:1 onto /ch/01../ch/16. The X32's
+        0-indexed scheme in the base class silently writes to a
+        non-existent address here.
+        """
+        return f"/headamp/{self._pad(ch)}/gain"
+
+    def ch_phantom(self, ch: int) -> str:
+        return f"/headamp/{self._pad(ch)}/phantom"
+
     def identify_address(self) -> str:
         return "/xinfo"
 

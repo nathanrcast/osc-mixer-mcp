@@ -16,8 +16,16 @@ def _blob(values_db: list[float]) -> bytes:
 
 
 @pytest.fixture(autouse=True)
-def reset_state(monkeypatch):
-    """Give every test a fresh client, profile and name registry."""
+def reset_state(tmp_path, monkeypatch):
+    """Give every test a fresh client, profile and name registry.
+
+    CONFIG_FILE is redirected at a tmp path so the suite never reads the
+    developer's real ~/.osc_mcp/config.json — without this, _get_client()
+    auto-reconnects to whatever mixer was last saved and the tests will
+    drive a live console if one happens to be on the network.
+    """
+    monkeypatch.setattr(config, "CONFIG_DIR", tmp_path)
+    monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "config.json")
     monkeypatch.delenv("OSC_MCP_READ_ONLY", raising=False)
     monkeypatch.delenv("OSC_MCP_ALLOWED_NETWORKS", raising=False)
     server._client = None
@@ -357,7 +365,7 @@ class TestChannelExtras:
     def test_gain_is_normalized(self, client):
         server.set_channel_gain(1, 24)
         address, value = sent(client)[0]
-        assert address == "/headamp/00/gain"
+        assert address == "/headamp/01/gain"
         assert value == pytest.approx(0.5)
 
     def test_gain_uses_three_digits_on_x32(self):
@@ -365,13 +373,23 @@ class TestChannelExtras:
         server.set_channel_gain(1, 24)
         assert sent(mock)[0][0] == "/headamp/000/gain"
 
+    def test_xair_headamps_are_one_indexed(self, client):
+        """XR18 fw 1.16: /headamp/00 does not exist; channel 1 is /headamp/01."""
+        server.set_channel_gain(16, 0)
+        assert sent(client)[0][0] == "/headamp/16/gain"
+
+    def test_x32_headamps_stay_zero_indexed(self):
+        mock = connect_as("X32")
+        server.set_channel_gain(16, 0)
+        assert sent(mock)[0][0] == "/headamp/015/gain"
+
     def test_phantom_is_not_inverted(self, client):
         server.set_phantom_power(1, True)
-        assert sent(client) == [("/headamp/00/phantom", 1)]
+        assert sent(client) == [("/headamp/01/phantom", 1)]
 
     def test_phantom_off(self, client):
         server.set_phantom_power(1, False)
-        assert sent(client) == [("/headamp/00/phantom", 0)]
+        assert sent(client) == [("/headamp/01/phantom", 0)]
 
     def test_strip_status(self, client):
         client.query_many.return_value = {

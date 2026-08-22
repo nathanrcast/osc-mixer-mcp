@@ -57,12 +57,12 @@ EXPECTED: list[tuple[str, tuple, dict[str, str]]] = [
         "WING": "/ch/1/eq/on",
     }),
     ("ch_gain", (1,), {
-        "XR18": "/headamp/00/gain",
+        "XR18": "/headamp/01/gain",
         "X32": "/headamp/000/gain",
         "WING": "/ch/1/in/set/g",
     }),
     ("ch_phantom", (16,), {
-        "XR18": "/headamp/15/phantom",
+        "XR18": "/headamp/16/phantom",
         "X32": "/headamp/015/phantom",
         "WING": "/ch/16/in/set/vph",
     }),
