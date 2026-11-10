@@ -45,7 +45,6 @@ Address maps are only as good as the console that confirms them. Sequence and pe
 
 ## Review focus
 
-- OSC address literals outside a profile; writes that bypass `@writes`; unverified WING paths reaching a send.
-- Mute/on encoding going around `profile.encode_mute()` / `encode_on()`.
+- The Invariants and Traps above are the checklist.
 
 License: Apache 2.0. **Public repo** — lab details (console IPs, hosts) go in the gitignored `CLAUDE.local.md`.
