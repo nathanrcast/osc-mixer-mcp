@@ -8,7 +8,7 @@ Address maps are only as good as the console that confirms them. The test suite 
 
 | Family | State |
 |---|---|
-| X-Air (XR18) | **VALIDATED 2026-08-21** on an XR18, firmware 1.16, at 192.168.1.40. Full sequence run; one address bug found and fixed (head amps). See below. |
+| X-Air (XR18) | **VALIDATED 2026-08-21** on an XR18, firmware 1.16. Full sequence run; one address bug found and fixed (head amps). See below. |
 | X32 / M32 | Addresses from Maillot's *UNOFFICIAL X32/M32 OSC REMOTE PROTOCOL*. **Not yet run.** |
 | WING | Several addresses UNVERIFIED (below). **Not yet run.** |
 
