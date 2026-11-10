@@ -4,34 +4,19 @@ MCP server that controls Behringer digital mixers over OSC/UDP. The console fami
 
 Renamed from `osc-xr18-mcp` at v0.4.0 when it stopped being XR18-only. `osc-xr18-mcp` survives as a console-script alias so older MCP client registrations keep launching.
 
-## Tech Stack
-
-- **Python** >=3.11
-- **MCP SDK**: `mcp[cli]` (FastMCP with `@mcp.tool()` decorators)
-- **OSC**: `python-osc` (message build/parse only — the socket is ours)
-- **Package manager**: `uv`
-- **Transport**: stdio
-
-## Project Structure
-
-- `src/osc_mcp/server.py` — MCP server + all tool definitions
-- `src/osc_mcp/osc_client.py` — persistent UDP socket, receiver thread, correlated query/query_many, keepalive
-- `src/osc_mcp/profiles/` — `base.py` (the contract), `xair.py`, `x32.py`, `wing.py`, `__init__.py` (registry + `detect`)
-- `src/osc_mcp/scaling.py` — dB taper, EQ/gain/pan normalization (X-Air + X32; WING overrides with identity)
-- `src/osc_mcp/names.py` — `NameRegistry`, model-agnostic
-- `src/osc_mcp/meters.py` — meter blob decode + RTA accumulator
-- `src/osc_mcp/config.py` — network allowlist, read-only gate, persisted mixer address/model
-- `tests/` — pytest suite, no hardware required
+Python ≥3.11, `uv`, FastMCP (`mcp[cli]`) over stdio. `python-osc` only builds and parses messages — the socket is ours.
 
 ## Commands
 
-- `uv sync` — install/update dependencies
-- `uv run pytest` — run full test suite
-- `uv run pytest tests/test_profiles.py -k wing` — run a subset
-- `uv run osc-mixer-mcp` — run MCP server via stdio (`osc-xr18-mcp` is a kept alias)
-- `uv run mcp dev src/osc_mcp/server.py` — MCP inspector for interactive testing
+- `uv sync` · `uv run pytest` — the gate: every feature ships with tests, and the suite passes before a commit. No hardware needed; transport tests drive a real loopback UDP console (`FakeMixer` in `tests/test_osc_client.py`), not a mocked socket.
+- `uv run pytest tests/test_profiles.py -k wing` — a subset
+- `uv run osc-mixer-mcp` — the server over stdio (`osc-xr18-mcp` is a kept alias); `uv run mcp dev src/osc_mcp/server.py` — MCP inspector
 
-## Conventions
+## Layout
+
+`src/osc_mcp/`: `server.py` (all tool definitions), `osc_client.py` (persistent UDP socket, receiver thread, correlated `query`/`query_many`, keepalive), `profiles/` (`base.py` is the contract; `xair.py`, `x32.py`, `wing.py`; registry + `detect` in `__init__.py`), `scaling.py` (dB taper and EQ/gain/pan normalization for X-Air + X32; WING overrides with identity), `config.py` (network allowlist, read-only gate, persisted mixer address).
+
+## Invariants
 
 - **Adding a parameter means adding a profile method**, not an inline address string. There are no OSC address literals in `server.py` outside the raw-OSC gates.
 - **Anything that differs per family goes on the profile**: addresses, index padding, mute polarity, value scaling, allow/deny lists, identify/keepalive.
@@ -39,7 +24,7 @@ Renamed from `osc-xr18-mcp` at v0.4.0 when it stopped being XR18-only. `osc-xr18
 - **Never guess a WING address into a send.** Unverified paths are commented `UNVERIFIED`; where a wrong guess would hit a live console (scenes, meters) the profile raises instead.
 - Read-only mode must gate every write tool via the `@writes` decorator, and must suppress the keepalive — WING allows only one OSC subscriber.
 
-## Gotchas
+## Traps
 
 1. **Mute polarity is inverted between families.** X-Air/X32 `mix/on` sends 1 for *unmuted*; WING `mute` sends 1 for *muted*. Always go through `profile.encode_mute()`. Plain switches (EQ on, phantom) use `encode_on()` and are not inverted.
 2. **EQ takes normalized 0–1 on X-Air/X32**, not Hz/dB/Q. Sending raw values lands the band somewhere unrelated — this was a live bug before v0.4.0.
@@ -48,19 +33,15 @@ Renamed from `osc-xr18-mcp` at v0.4.0 when it stopped being XR18-only. `osc-xr18
 5. **Queries must be correlated by address.** The socket is shared with subscriptions and state pushes; anything else risks answering a query with an unrelated packet.
 6. **`_sync_names` uses `query_many`.** Sequential queries would take ~30 s on an X32.
 
-## Testing Policy
-
-Every feature must have tests before delivery. Run `uv run pytest` and ensure all tests pass before committing. Transport tests drive a real loopback UDP console (`FakeMixer` in `tests/test_osc_client.py`) rather than mocking the socket.
-
 ## Live console safety
 
 - Before driving a real console, check it is idle: subscribe to `/meters` and confirm nothing is above -60 dBFS.
 - Snapshot every parameter you intend to write via raw OSC and replay it afterwards — consoles carry a hand-dialled gain structure worth preserving.
 - Finding a console: sweep the subnet with an identify probe — X-Air `/xinfo` on UDP 10024, X32 `/info` on 10023, WING `/?` on 2223. It replies with ip, name, model and firmware. Mixers may not appear in the router's client list.
 
-## Hardware Validation
+## Hardware validation
 
-Address maps are only as good as the console that confirms them. See the smoke-test sequence in the project plan; run it on the XR18 first (the one model with existing behaviour to preserve), then X32, then WING.
+Address maps are only as good as the console that confirms them. Sequence and per-model results: `docs/hardware_validation.md`. Run it on the XR18 first (the one model with existing behaviour to preserve), then X32, then WING.
 
 ## Review focus
 
